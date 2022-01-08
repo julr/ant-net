@@ -42,13 +42,33 @@ namespace Ant.Device
         public int SoftwareVersion { get; private set; } = -1;
         public int ModelNumber { get; private set; } = -1;
 
+        public event EventHandler SensorNotFound;
+
         private readonly Mutex messageMutex;
 
         public HeartRateMonitor(Dongle.Channel channel)
         {
             this.channel = channel ?? throw new ArgumentNullException(nameof(channel));
             channel.NewBoradcastMessage += Channel_OnBoradcastMessage;
+            channel.ChannelEvent += Channel_ChannelEvent;
             messageMutex = new Mutex(false);
+        }
+
+        private void Channel_ChannelEvent(object sender, Dongle.Channel.ChannelEventCode e)
+        {
+            switch (e)
+            {
+                case Dongle.Channel.ChannelEventCode.EVENT_CHANNEL_CLOSED:
+                    Debug.WriteLine("HRM sensor channel was closed");
+                    channel.Unassign();
+                    DeviceState = State.Off;
+                    break;
+
+                case Dongle.Channel.ChannelEventCode.EVENT_RX_SEARCH_TIMEOUT:
+                    Debug.WriteLine("HRM sensor was not found, search timeout");
+                    SensorNotFound?.Invoke(this, new EventArgs());
+                    break;
+            }
         }
 
         // The Event will be fired as a task, add a mutex lock to prevent data corruption

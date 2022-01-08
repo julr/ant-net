@@ -22,6 +22,23 @@ namespace Ant
                 TransmitOnly = 0x50
             }
 
+            public enum ChannelEventCode : byte
+            {
+                EVENT_RX_SEARCH_TIMEOUT = 0x01, // A receive channel has timed out on searching. The search is terminated, and the channel has been automatically closed.
+                EVENT_RX_FAIL = 0x02, // A receive channel missed a message which it was expecting.
+                EVENT_TX = 0x03, // A Broadcast message has been transmitted successfully.
+                EVENT_TRANSFER_RX_FAILED = 0x04, // A receive transfer has failed.
+                EVENT_TRANSFER_TX_COMPLETED = 0x05, // An Acknowledged Data message or a Burst Transfer sequence has been completed successfully.
+                EVENT_TRANSFER_TX_FAILED = 0x06, // An Acknowledged Data message, or a Burst Transfer Message has been initiated and the transmission failed to complete successfully.
+                EVENT_CHANNEL_CLOSED = 0x07, // The channel has been successfully closed.
+                EVENT_RX_FAIL_GO_TO_SEARCH = 0x08, // The channel has dropped to search mode after missing too many messages.
+                EVENT_CHANNEL_COLLISION = 0x09, // Two channels have drifted into each other and overlapped in time on the device causing one channel to be blocked.
+                EVENT_TRANSFER_TX_START = 0x0A, // Sent after a burst transfer begins, effectively on the next channel period after the burst transfer message has been sent to the device.
+                EVENT_TRANSFER_NEXT_DATA_BLOCK = 0x11, // Returned to indicate a data block release on the burst buffer.
+                EVENT_SERIAL_QUE_OVERFLOW = 0x34, // This event indicates that the outgoing serial buffer of the USB chip has overflowed.
+                EVENT_QUE_OVERFLOW = 0x35, // May be possible when using synchronous serial port, or using all channels on a slow asynchronous connection.
+            }
+
             public class ChannelId
             {
                 public ushort DeviceNumber { get; private set; }
@@ -41,6 +58,7 @@ namespace Ant
             }
 
             internal event EventHandler<BroadcastMessage> NewBoradcastMessage;
+            internal event EventHandler<ChannelEventCode> ChannelEvent;
 
             private readonly Dongle device;
             private readonly byte number;
@@ -48,12 +66,15 @@ namespace Ant
             private readonly ConcurrentQueue<ChannelMessage> channelMessages;
             private readonly ConcurrentBag<ChannelId> channelIdBag;
 
+            private bool disablePublicEventHandling;
+
             public Channel(Dongle Device, int Number)
             {
                 device = Device;
                 number = (byte)Number;
                 channelMessages = new ConcurrentQueue<ChannelMessage>();
                 channelIdBag = new ConcurrentBag<ChannelId>();
+                disablePublicEventHandling = false;
             }
 
             public void Open()
@@ -64,9 +85,11 @@ namespace Ant
 
             public void Close()
             {
+                disablePublicEventHandling = true;
                 device.WriteMessage(new Messages.CloseChannel(number));
                 CheckResponse(MessageId.CloseChannel);
                 if (!WaitForEvent(ChannelMessage.MessageCode.EVENT_CHANNEL_CLOSED)) throw new Exception("No closing event received");
+                disablePublicEventHandling = false;
             }
 
             public void Assign(ChannelType type, byte network)
@@ -123,12 +146,18 @@ namespace Ant
 
             internal void MessageReceived(ChannelMessage message)
             {
-                channelMessages.Enqueue(message);
                 if(message.Type == ChannelMessage.MessageType.EVENT)
                 {
                     Debug.WriteLine("Got Channel event: " + message.Code);
+                    if(!disablePublicEventHandling)
+                    {
+                        //Invoke the handler in a new task otherwise the receiving thread is blocked
+                        Task.Run(() => { ChannelEvent?.Invoke(this, (ChannelEventCode)message.Code); });
+                        return;
+                    }
                 }
-                //TODO: Handle event messages outside of WaitForEvent()
+
+                channelMessages.Enqueue(message);
             }
 
             internal void MessageReceived(BroadcastMessage message)
