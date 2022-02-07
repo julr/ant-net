@@ -17,11 +17,10 @@ namespace Ant.Device
         private const Ant.Dongle.Channel.ChannelType ChannelType = Dongle.Channel.ChannelType.Receive;
         private const byte SearchTimeout = 12; //equals to 30 seconds
 
+        // Public properties
         public event EventHandler NewSensorDataReceived;
 
         public event EventHandler<ushort> SensorFound;
-
-        private readonly Dongle.Channel channel;
 
         public enum State
         {
@@ -44,7 +43,15 @@ namespace Ant.Device
 
         public event EventHandler SensorNotFound;
 
+
+        // private variables
         private readonly Mutex messageMutex;
+
+        private readonly Dongle.Channel channel;
+
+        private int lastEventlastEventCount;
+
+        private bool autoReconnect;
 
         public HeartRateMonitor(Dongle.Channel channel)
         {
@@ -52,6 +59,8 @@ namespace Ant.Device
             channel.NewBoradcastMessage += Channel_OnBoradcastMessage;
             channel.ChannelEvent += Channel_ChannelEvent;
             messageMutex = new Mutex(false);
+            lastEventlastEventCount = 0;
+            autoReconnect = false;
         }
 
         private void Channel_ChannelEvent(object sender, Dongle.Channel.ChannelEventCode e)
@@ -60,8 +69,15 @@ namespace Ant.Device
             {
                 case Dongle.Channel.ChannelEventCode.EVENT_CHANNEL_CLOSED:
                     Debug.WriteLine("HRM sensor channel was closed");
-                    channel.Unassign();
-                    DeviceState = State.Off;
+                    if(autoReconnect)
+                    {
+                        channel.Open();
+                    }
+                    else
+                    {
+                        channel.Unassign();
+                        DeviceState = State.Off;
+                    }
                     break;
 
                 case Dongle.Channel.ChannelEventCode.EVENT_RX_SEARCH_TIMEOUT:
@@ -121,7 +137,10 @@ namespace Ant.Device
                     default:
                         break;
                 }
-                NewSensorDataReceived?.Invoke(this, null);
+                //do we actually have new data?
+                if(HeartBeatCount != lastEventlastEventCount)
+                    NewSensorDataReceived?.Invoke(this, null);
+                lastEventlastEventCount = HeartBeatCount;
             }
 
             messageMutex.ReleaseMutex();
@@ -129,13 +148,14 @@ namespace Ant.Device
 
         public void StartSearch(byte network = 1)
         {
-            Start(0, network);  //Device ID 0 = Searching
+            Start(0, false, network);  //Device ID 0 = Searching
             DeviceState = State.Searching;
         }
 
-        public void Start(ushort SensorId, byte network = 1)
+        public void Start(ushort SensorId, bool AutoReconnect = false, byte network = 1)
         {
             if (DeviceState != State.Off) throw new Exception("Device is currently active");
+            autoReconnect = AutoReconnect;
             channel.Assign(ChannelType, network);
             channel.SetId(SensorId, DeviceType);
             channel.SetSearchTimeout(SearchTimeout);
