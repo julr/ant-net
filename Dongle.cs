@@ -18,16 +18,35 @@ namespace Ant
         private readonly UsbEndpointReader reader;
         private readonly UsbEndpointWriter writer;
 
-        //GARMIN ANT+ USB Device vid/pid
-        private static readonly int VID = 0x0FCF;
-        private static readonly int PID = 0x1009;
+        private struct VidPidCombo
+        {
+            public readonly int VID;
+            public readonly int PID;
+            public VidPidCombo(int vid, int pid)
+            {
+                VID = vid; 
+                PID = pid;
+            }
+        }
+
+       private static readonly VidPidCombo[] supportedDeivces = new VidPidCombo[]
+       { 
+            new VidPidCombo(0x0FCF, 0x1009), // GARMIN ANT+ USB Dongle
+            new VidPidCombo(0x0FCF, 0x1008)  // Dynastream ANTUSB2 
+       };
 
         private bool running = false;
 
         public Dongle()
         {
-            //For some reason the UsbDeviceFinder does not find the device -> search the registry by hand
-            var entry = UsbDevice.AllDevices.FirstOrDefault(d => d.Pid == PID && d.Vid == VID && d.Device != null);
+            UsbRegistry entry = null;
+
+            foreach(var supportedDevice in supportedDeivces)
+            {
+                //For some reason the UsbDeviceFinder does not find the device -> search the registry by hand
+                entry = UsbDevice.AllDevices.FirstOrDefault(d => d.Pid == supportedDevice.PID && d.Vid == supportedDevice.VID && d.Device != null);
+                if (entry != null) break;
+            }
 
             if (entry == null)  throw new Exception("No dongle found.");
             if (!entry.Open(out usbDevice)) throw new Exception("Unable to open dongle device");
