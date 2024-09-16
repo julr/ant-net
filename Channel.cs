@@ -133,7 +133,7 @@ namespace Ant
 
             public ChannelId GetChannelId(int timeout = 500)
             {
-                device.WriteMessage(new Messages.Request(MessageId.ChannelId));
+                device.WriteMessage(new Messages.Request(number, MessageId.ChannelId));
                 ChannelId channelId;
                 while(!channelIdBag.TryTake(out channelId))
                 {

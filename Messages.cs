@@ -15,7 +15,7 @@ namespace Ant
 
         public class Request : Message
         {            
-            public Request(MessageId RequestId) : base(MessageId.Request, new byte[2] {0x00, (byte)RequestId}) { }
+            public Request(byte ChannelId, MessageId RequestId) : base(MessageId.Request, new byte[2] { ChannelId, (byte)RequestId}) { }
         }
 
         public class SetNetworkKey : Message

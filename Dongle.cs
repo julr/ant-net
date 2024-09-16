@@ -120,7 +120,7 @@ namespace Ant
             if (readMessage.Id != MessageId.Startup) throw new Exception("Dongle reset failed");
 
             //Get the dongles capabilities
-            WriteMessage(new Messages.Request(MessageId.Capabilities));
+            WriteMessage(new Messages.Request(0, MessageId.Capabilities));
             var capabilities = new Capabilities(ReadMessage());
 
             Channels = new Channel[capabilities.MaximumChannels];
